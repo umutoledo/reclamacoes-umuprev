@@ -235,7 +235,7 @@
         <div class="row3">
           <div class="field">
             <label for="f-canal">Canal</label>
-            <select id="f-canal" required><option value="">Selecione…</option><option>Presencial</option><option>Telefone</option><option>WhatsApp</option><option>Outro</option></select>
+            <select id="f-canal" required><option value="">Selecione…</option><option>Presencial</option><option>Telefone</option><option>WhatsApp</option><option>ChatUmuprev</option><option>Outro</option></select>
           </div>
           <div class="field">
             <label for="f-setor">Setor</label>
@@ -243,15 +243,16 @@
               <option value="">Selecione…</option>
               <option>Funerária</option><option>Atendimento</option><option>Cobrança</option>
               <option>Clínica Médica</option><option>Clínica Odontológica</option><option>Parceiros</option>
+              <option>Farmácia</option><option>Aditivos</option><option>Vendas</option>
             </select>
           </div>
           <div class="field">
             <label for="f-categoria">Categoria</label>
             <select id="f-categoria" required>
               <option value="">Selecione…</option>
-              <option>Atendimento</option><option>Demora</option><option>Cobrança</option>
-              <option>Informação divergente</option><option>Prestador/parceiro</option>
-              <option>Estrutura</option><option>Procedimento</option><option>Outro</option>
+              <option>Atendimento</option><option>Demora</option><option>Cobrança</option><option>Valor</option>
+              <option>Informação incorreta ou divergente</option><option>Plano/contrato</option><option>Agendamento</option>
+              <option>Prestador/parceiro</option><option>Estrutura/ambiente</option><option>Procedimento</option><option>Outro</option>
             </select>
           </div>
         </div>
@@ -354,8 +355,8 @@
   // ============================================================
   var API_URL = "https://script.google.com/macros/s/AKfycbxKee4IHYgsdOTyO64EsPhJ26Ncw_QCKaPQ_oNNgZlseVJcv4_wj-2-g8GKlzNQ9lt4/exec";
 
-  var SETORES = ["Funerária","Atendimento","Cobrança","Clínica Médica","Clínica Odontológica","Parceiros"];
-  var CATEGORIAS = ["Atendimento","Demora","Cobrança","Informação divergente","Prestador/parceiro","Estrutura","Procedimento","Outro"];
+  var SETORES = ["Funerária","Atendimento","Cobrança","Clínica Médica","Clínica Odontológica","Parceiros","Farmácia","Aditivos","Vendas"];
+  var CATEGORIAS = ["Atendimento","Demora","Cobrança","Valor","Informação incorreta ou divergente","Plano/contrato","Agendamento","Prestador/parceiro","Estrutura/ambiente","Procedimento","Outro"];
   var SUPERVISORES = ["Francielle","Deysi","Alanah","Maria Eduarda","Rodrigo","Thiago","Dhierry"];
   var STATUSES = ["Aberta","Em tratativa","Aguardando","Resolvida"];
   var GRAVIDADES = ["Baixa","Média","Alta","Crítica"];
