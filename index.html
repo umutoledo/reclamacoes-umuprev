@@ -32,6 +32,7 @@
   .alert-banner{ display:flex; align-items:center; gap:10px; padding:12px 16px; font-size:13px; font-weight:700; cursor:pointer; border:none; width:100%; text-align:left; }
   .alert-banner.crit{ background:var(--red); color:#fff; }
   .alert-banner.warn{ background:var(--amber); color:#fff; }
+  .alert-banner.info{ background:var(--info); color:#fff; cursor:default; }
   .alert-banner .dot{ width:8px; height:8px; border-radius:50%; background:#fff; flex:none; }
   .alert-banner .arrow{ margin-left:auto; opacity:.8; }
 
@@ -78,8 +79,9 @@
 
   .toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
   .btn-ghost{ background:var(--lavender); color:var(--accent); border:1px solid var(--border); border-radius:9px; padding:9px 14px; font-weight:700; font-size:12.5px; cursor:pointer; }
-  .btn-ghost input[type="file"]{ display:none; }
+  .btn-ghost:disabled{ opacity:.5; cursor:default; }
   .sync-note{ color:var(--muted); font-size:11.5px; margin-left:auto; }
+  .sync-note.err{ color:var(--red); font-weight:700; }
 
   .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
   @media (max-width:600px){ .stats{ grid-template-columns:repeat(2,1fr); } }
@@ -148,6 +150,7 @@
   .edit-area textarea{ width:100%; min-height:56px; padding:8px 10px; border:1px solid var(--border); border-radius:7px; background:var(--bg); font-size:12.5px; }
   .edit-label{ font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:-4px; }
   .save-btn{ align-self:flex-start; background:var(--emerald); color:#fff; border:none; padding:7px 14px; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; }
+  .save-btn:disabled{ opacity:.55; cursor:default; }
   .del-btn{ align-self:flex-start; background:none; color:var(--red); border:1px solid var(--red); padding:6px 12px; border-radius:7px; font-size:11.5px; font-weight:700; cursor:pointer; }
 
   .empty{ text-align:center; padding:30px 10px; color:var(--muted); }
@@ -163,9 +166,12 @@
 <div class="header">
   <div class="eyebrow">Umuprev · Gestão de Reclamações</div>
   <h1>Sistema de Reclamações</h1>
-  <p>Registro por setor, tratativa com linha do tempo e painel consolidado para a gerência. Sem login — os dados ficam neste navegador.</p>
+  <p>Registro por setor, tratativa com linha do tempo e painel consolidado para a gerência. Os dados ficam salvos automaticamente numa planilha compartilhada — todos que acessarem este link veem as mesmas informações.</p>
 </div>
 
+<button class="alert-banner info" id="banner-config" hidden>
+  <span class="dot"></span><span>⚠️ Este sistema ainda não está conectado à planilha de dados. Fale com a Fran para concluir a configuração.</span>
+</button>
 <button class="alert-banner crit" id="banner-crit" hidden>
   <span class="dot"></span><span id="banner-crit-text"></span><span class="arrow">Ver →</span>
 </button>
@@ -182,7 +188,7 @@
   <section id="tab-registrar">
     <div class="card">
       <h2>Nova reclamação</h2>
-      <p class="hint">Preenchido pelo supervisor que recebeu a reclamação. Fica salva neste navegador — use "Exportar dados" na aba Painel para enviar para a gestora.</p>
+      <p class="hint">Preenchido pelo supervisor que recebeu a reclamação. Assim que você registra, já fica salvo e visível para todos — não precisa enviar nada.</p>
       <form id="form-nova">
         <div class="section-label">Dados do associado</div>
         <div class="row2">
@@ -247,8 +253,7 @@
 
   <section id="tab-painel" hidden>
     <div class="toolbar">
-      <button class="btn-ghost" id="btn-export">⬇ Exportar dados (JSON)</button>
-      <label class="btn-ghost">⬆ Importar dados (JSON)<input type="file" id="input-import" accept="application/json" multiple></label>
+      <button class="btn-ghost" id="btn-refresh">🔄 Atualizar agora</button>
       <span class="sync-note" id="sync-note"></span>
     </div>
 
@@ -306,8 +311,14 @@
 
 <script>
 (function(){
+  // ============================================================
+  // CONFIGURAÇÃO — cole aqui a URL do seu Apps Script (Web App)
+  // depois de fazer o deploy. Veja as instruções que a Fran te
+  // enviou junto com este arquivo.
+  // ============================================================
+  var API_URL = "https://script.google.com/macros/s/AKfycbxKee4IHYgsdOTyO64EsPhJ26Ncw_QCKaPQ_oNNgZlseVJcv4_wj-2-g8GKlzNQ9lt4/exec";
+
   var SETORES = ["Funerária","Atendimento","Cobrança","Clínica Médica","Clínica Odontológica","Parceiros"];
-  var SETOR_COD = { "Funerária":"FUN","Atendimento":"ATD","Cobrança":"COB","Clínica Médica":"CLM","Clínica Odontológica":"ODO","Parceiros":"PAR" };
   var CATEGORIAS = ["Atendimento","Demora","Cobrança","Informação divergente","Prestador/parceiro","Estrutura","Procedimento","Outro"];
   var SUPERVISORES = ["Deysi","Alanah","Maria Eduarda","Rodrigo","Thiago"];
   var STATUSES = ["Aberta","Em tratativa","Aguardando","Resolvida"];
@@ -316,24 +327,60 @@
   var CONTATOS = ["","Sim","Não","Não se aplica"];
   var SEV_COLOR = { "Baixa":"var(--sev-baixa)", "Média":"var(--sev-media)", "Alta":"var(--sev-alta)", "Crítica":"var(--sev-critica)" };
   var PEND_DIAS = 3;
-  var STORE_KEY = 'umuprev_reclamacoes_v3';
-  var COUNTER_PREFIX = 'umuprev_reclamacoes_v3_counter_';
-  var LAST_SYNC_KEY = 'umuprev_reclamacoes_v3_last_import';
-  var LAST_SUPERVISOR_KEY = 'umuprev_reclamacoes_v3_last_supervisor';
-
-  function loadAll(){ try { var raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; } }
-  function saveAll(list){ try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; } catch(e){ return false; } }
-  var complaints = loadAll();
+  var CACHE_KEY = 'umuprev_reclamacoes_v4_cache';
+  var LAST_SUPERVISOR_KEY = 'umuprev_reclamacoes_v4_last_supervisor';
+  var POLL_MS = 30000;
 
   function lsGet(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
   function lsSet(k,v){ try { localStorage.setItem(k, v); } catch(e){} }
+  function cacheLoad(){ try { var raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; } }
+  function cacheSave(list){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch(e){} }
 
-  function nextNumero(setor){
-    var cod = SETOR_COD[setor] || 'GER';
-    var key = COUNTER_PREFIX + cod;
-    var n = parseInt(lsGet(key) || '0', 10) + 1;
-    lsSet(key, String(n));
-    return 'REC-' + cod + '-' + String(n).padStart(4, '0');
+  var complaints = cacheLoad();
+  var lastSyncAt = null;
+  var syncing = false;
+  var syncError = false;
+
+  // ---------- backend ----------
+  function apiGet(){
+    if (!API_URL) return Promise.reject(new Error('sem-config'));
+    return fetch(API_URL, { method: 'GET' }).then(function(r){
+      if (!r.ok) throw new Error('http-' + r.status);
+      return r.json();
+    });
+  }
+  function apiPost(payload){
+    if (!API_URL) return Promise.reject(new Error('sem-config'));
+    return fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS no Apps Script
+      body: JSON.stringify(payload)
+    }).then(function(r){
+      if (!r.ok) throw new Error('http-' + r.status);
+      return r.json();
+    });
+  }
+
+  function syncFromServer(showToastOnOk){
+    if (!API_URL){
+      document.getElementById('banner-config').hidden = false;
+      renderSyncNote();
+      return Promise.resolve();
+    }
+    document.getElementById('banner-config').hidden = true;
+    syncing = true; syncError = false; renderSyncNote();
+    return apiGet().then(function(list){
+      complaints = Array.isArray(list) ? list : [];
+      cacheSave(complaints);
+      lastSyncAt = new Date();
+      syncing = false;
+      render();
+      if (showToastOnOk) toast('Atualizado.');
+    }).catch(function(err){
+      syncing = false; syncError = true;
+      renderSyncNote();
+      if (showToastOnOk) toast('Não deu para atualizar agora — mostrando os últimos dados que este navegador tinha.', true);
+    });
   }
 
   // ---------- tabs ----------
@@ -346,7 +393,7 @@
     tabRegistrar.setAttribute('aria-selected', reg ? 'true':'false');
     tabPainel.setAttribute('aria-selected', reg ? 'false':'true');
     secRegistrar.hidden = !reg; secPainel.hidden = reg;
-    if (!reg) render();
+    if (!reg) syncFromServer(false);
   }
   tabRegistrar.addEventListener('click', function(){ selectTab('registrar'); });
   tabPainel.addEventListener('click', function(){ selectTab('painel'); });
@@ -356,6 +403,7 @@
   document.getElementById('banner-pend').addEventListener('click', function(){
     selectTab('painel'); filtPendencia.value = 'pend'; filtGravidade.value=''; filtStatus.value=''; render();
   });
+  document.getElementById('btn-refresh').addEventListener('click', function(){ syncFromServer(true); });
 
   var toastEl = document.getElementById('toast');
   var toastTimer = null;
@@ -376,6 +424,7 @@
   var fSupervisor = document.getElementById('f-supervisor');
   var fPrazo = document.getElementById('f-prazo');
   var chipGroup = document.getElementById('chip-gravidade');
+  var btnSubmit = document.getElementById('btn-submit');
 
   fSupervisor.value = lsGet(LAST_SUPERVISOR_KEY);
 
@@ -391,6 +440,7 @@
 
   document.getElementById('form-nova').addEventListener('submit', function(ev){
     ev.preventDefault();
+    if (!API_URL){ toast('Sistema ainda não conectado à planilha — peça para a Fran configurar.', true); return; }
     var gravidadeInput = chipGroup.querySelector('input[name="gravidade"]:checked');
     if (!fCanal.value || !fSetor.value || !fCategoria.value || !fDescricao.value.trim() || !fSupervisor.value || !gravidadeInput){
       toast('Preencha canal, setor, categoria, gravidade, descrição e supervisor responsável.', true);
@@ -398,9 +448,9 @@
     }
     var now = new Date().toISOString();
     var supervisor = fSupervisor.value;
-    var payload = {
+    var record = {
       id: newId(),
-      numero: nextNumero(fSetor.value),
+      numero: '',
       contrato: fContrato.value.trim(),
       nome: fNome.value.trim(),
       canal: fCanal.value,
@@ -419,55 +469,20 @@
       timeline: [{ ts: now, autor: supervisor, texto: 'Registrou a reclamação.' }],
       createdAt: now, updatedAt: now, resolvedAt: '', atualizadoPor: supervisor
     };
-    complaints.push(payload);
-    if (!saveAll(complaints)){ toast('Não deu para salvar no navegador (armazenamento bloqueado ou cheio).', true); return; }
-    lsSet(LAST_SUPERVISOR_KEY, supervisor);
-    toast('Reclamação ' + payload.numero + ' registrada.');
-    fContrato.value=''; fNome.value=''; fDescricao.value=''; fCanal.value=''; fSetor.value=''; fCategoria.value=''; fPrazo.value='';
-    chipGroup.querySelectorAll('.chip').forEach(function(c){ c.dataset.active = 'false'; });
-  });
-
-  // ---------- export / import ----------
-  document.getElementById('btn-export').addEventListener('click', function(){
-    var data = JSON.stringify(complaints, null, 2);
-    var blob = new Blob([data], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    var stamp = new Date().toISOString().slice(0,10);
-    a.href = url; a.download = 'reclamacoes_' + stamp + '.json';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-    toast('Arquivo exportado.');
-  });
-
-  document.getElementById('input-import').addEventListener('change', function(ev){
-    var files = Array.prototype.slice.call(ev.target.files || []);
-    if (!files.length) return;
-    var pending = files.length, added = 0, updated = 0, failed = 0;
-    files.forEach(function(file){
-      var reader = new FileReader();
-      reader.onload = function(){
-        try {
-          var incoming = JSON.parse(reader.result);
-          if (!Array.isArray(incoming)) throw new Error('formato inválido');
-          incoming.forEach(function(item){
-            if (!item || !item.id) return;
-            var idx = complaints.findIndex(function(c){ return c.id === item.id; });
-            if (idx >= 0){ complaints[idx] = item; updated++; } else { complaints.push(item); added++; }
-          });
-        } catch(e){ failed++; }
-        pending--; if (pending === 0) finishImport();
-      };
-      reader.onerror = function(){ failed++; pending--; if (pending === 0) finishImport(); };
-      reader.readAsText(file);
+    btnSubmit.disabled = true; btnSubmit.textContent = 'Enviando…';
+    apiPost({ action: 'save', record: record }).then(function(resp){
+      record.numero = resp && resp.numero ? resp.numero : record.numero;
+      complaints.push(record);
+      cacheSave(complaints);
+      lsSet(LAST_SUPERVISOR_KEY, supervisor);
+      toast('Reclamação ' + (record.numero || '') + ' registrada.');
+      fContrato.value=''; fNome.value=''; fDescricao.value=''; fCanal.value=''; fSetor.value=''; fCategoria.value=''; fPrazo.value='';
+      chipGroup.querySelectorAll('.chip').forEach(function(c){ c.dataset.active = 'false'; });
+    }).catch(function(err){
+      toast('Não deu para salvar agora — verifique a internet e tente de novo.', true);
+    }).finally(function(){
+      btnSubmit.disabled = false; btnSubmit.textContent = 'Registrar reclamação';
     });
-    function finishImport(){
-      saveAll(complaints);
-      lsSet(LAST_SYNC_KEY, new Date().toISOString());
-      ev.target.value = '';
-      toast('Importado: ' + added + ' nova(s), ' + updated + ' atualizada(s).' + (failed ? ' ' + failed + ' arquivo(s) com erro.' : ''), !!failed);
-      render();
-    }
   });
 
   // ---------- filters ----------
@@ -581,7 +596,7 @@
       return true;
     });
     if (filtered.length === 0){
-      el.innerHTML = '<div class="empty"><h3>Nenhuma reclamação por aqui</h3><p>Registre pela aba "Registrar" ou importe um arquivo JSON enviado por um setor.</p></div>';
+      el.innerHTML = '<div class="empty"><h3>Nenhuma reclamação por aqui</h3><p>Registre pela aba "Registrar" — assim que alguém registrar, aparece aqui para todos.</p></div>';
       return;
     }
     el.innerHTML = filtered.map(function(c){
@@ -604,7 +619,7 @@
           '</div>' +
           (c.nome || c.contrato ? '<div class="meta" style="margin-top:6px;">' + [c.nome, c.contrato ? ('contrato ' + esc(c.contrato)) : ''].filter(Boolean).map(esc).join(' · ') + '</div>' : '') +
           '<p class="desc">' + esc(c.descricao) + '</p>' +
-          '<div class="meta' + (pend ? ' pendente' : '') + '">' + fmtDate(c.createdAt.slice(0,10)) + ' · supervisor ' + esc(c.supervisorResponsavel||'—') +
+          '<div class="meta' + (pend ? ' pendente' : '') + '">' + fmtDate((c.createdAt||'').slice(0,10)) + ' · supervisor ' + esc(c.supervisorResponsavel||'—') +
             ' · há ' + diasAberta(c) + ' dia(s)' + (c.prazo ? ' · prazo ' + fmtDate(c.prazo) : '') + (pend ? ' · pendente' : '') + '</div>' +
           '<button class="expand-btn" data-toggle="' + esc(c.id) + '">Ver linha do tempo / atualizar</button>' +
           '<div class="edit-area" id="edit-' + esc(c.id) + '" hidden>' +
@@ -658,39 +673,57 @@
 
         var autor = complaints[idx].supervisorResponsavel || 'Não informado';
         var now = new Date().toISOString();
-        complaints[idx].timeline = complaints[idx].timeline || [];
-        complaints[idx].timeline.push({ ts: now, autor: autor, texto: entryText });
-        complaints[idx].status = newStatus;
-        complaints[idx].responsavelTratativa = respTratInput.value.trim();
-        complaints[idx].prazo = prazoInput.value || '';
-        complaints[idx].contatoAssociado = contatoSel.value;
-        complaints[idx].resultado = resultadoSel.value;
-        complaints[idx].reincidencia = reincSel.value;
-        complaints[idx].observacoes = obsArea.value.trim();
-        complaints[idx].updatedAt = now;
-        complaints[idx].atualizadoPor = autor;
-        if (newStatus === 'Resolvida' && !complaints[idx].resolvedAt) complaints[idx].resolvedAt = now;
-        if (newStatus !== 'Resolvida') complaints[idx].resolvedAt = '';
-        saveAll(complaints);
-        toast('Atualização registrada.');
-        render();
+        var updated = JSON.parse(JSON.stringify(complaints[idx]));
+        updated.timeline = updated.timeline || [];
+        updated.timeline.push({ ts: now, autor: autor, texto: entryText });
+        updated.status = newStatus;
+        updated.responsavelTratativa = respTratInput.value.trim();
+        updated.prazo = prazoInput.value || '';
+        updated.contatoAssociado = contatoSel.value;
+        updated.resultado = resultadoSel.value;
+        updated.reincidencia = reincSel.value;
+        updated.observacoes = obsArea.value.trim();
+        updated.updatedAt = now;
+        updated.atualizadoPor = autor;
+        if (newStatus === 'Resolvida' && !updated.resolvedAt) updated.resolvedAt = now;
+        if (newStatus !== 'Resolvida') updated.resolvedAt = '';
+
+        btn.disabled = true; btn.textContent = 'Enviando…';
+        apiPost({ action: 'save', record: updated }).then(function(){
+          complaints[idx] = updated;
+          cacheSave(complaints);
+          toast('Atualização registrada.');
+          render();
+        }).catch(function(){
+          toast('Não deu para salvar agora — verifique a internet e tente de novo.', true);
+          btn.disabled = false; btn.textContent = 'Registrar atualização';
+        });
       });
     });
     el.querySelectorAll('[data-del-for]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var id = btn.getAttribute('data-del-for');
-        complaints = complaints.filter(function(c){ return c.id !== id; });
-        saveAll(complaints);
-        toast('Reclamação excluída.');
-        render();
+        btn.disabled = true;
+        apiPost({ action: 'delete', id: id }).then(function(){
+          complaints = complaints.filter(function(c){ return c.id !== id; });
+          cacheSave(complaints);
+          toast('Reclamação excluída.');
+          render();
+        }).catch(function(){
+          toast('Não deu para excluir agora — verifique a internet e tente de novo.', true);
+          btn.disabled = false;
+        });
       });
     });
   }
 
   function renderSyncNote(){
     var el = document.getElementById('sync-note');
-    var last = lsGet(LAST_SYNC_KEY);
-    el.textContent = complaints.length + ' registro(s) neste navegador · última importação: ' + (last ? fmtDateTime(last) : 'nunca');
+    if (!API_URL){ el.textContent = 'Sistema não configurado.'; el.className = 'sync-note err'; return; }
+    if (syncing){ el.textContent = 'Atualizando…'; el.className = 'sync-note'; return; }
+    if (syncError){ el.textContent = complaints.length + ' registro(s) (última cópia salva — sem conexão agora)'; el.className = 'sync-note err'; return; }
+    el.textContent = complaints.length + ' registro(s) · atualizado ' + (lastSyncAt ? fmtDateTime(lastSyncAt.toISOString()) : '—');
+    el.className = 'sync-note';
   }
 
   function render(){
@@ -707,6 +740,8 @@
   }
 
   render();
+  syncFromServer(false);
+  setInterval(function(){ if (!secPainel.hidden) syncFromServer(false); }, POLL_MS);
 })();
 </script>
 </body>
