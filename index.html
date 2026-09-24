@@ -159,6 +159,13 @@
   .toast{ position:fixed; left:50%; bottom:24px; transform:translate(-50%,12px); background:var(--navy-deep); color:#fff; padding:11px 18px; border-radius:999px; font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; z-index:20; box-shadow:0 8px 24px rgba(0,0,0,.2); }
   .toast.show{ opacity:1; transform:translate(-50%,0); }
   .toast.err{ background:var(--red); }
+
+  .login-wrap{ display:flex; align-items:center; justify-content:center; padding:40px 16px; min-height:60vh; }
+  .login-card{ max-width:380px; width:100%; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:26px 22px; }
+  .login-card h1{ font-size:19px; margin:2px 0 8px; }
+  .login-error{ color:var(--red); font-size:12.5px; font-weight:700; margin-top:10px; }
+  .user-bar{ display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:8px 16px; background:var(--lavender); font-size:12.5px; font-weight:700; color:var(--accent); }
+  .user-bar button{ background:none; border:1px solid var(--border); border-radius:7px; padding:5px 10px; font-size:11.5px; font-weight:700; color:var(--muted); cursor:pointer; }
 </style>
 </head>
 <body>
@@ -167,6 +174,11 @@
   <div class="eyebrow">Umuprev · Gestão de Reclamações</div>
   <h1>Sistema de Reclamações</h1>
   <p>Registro por setor, tratativa com linha do tempo e painel consolidado para a gerência. Os dados ficam salvos automaticamente numa planilha compartilhada — todos que acessarem este link veem as mesmas informações.</p>
+</div>
+
+<div class="user-bar" id="user-bar" hidden>
+  <span id="user-name"></span>
+  <button type="button" id="btn-logout">Sair</button>
 </div>
 
 <button class="alert-banner info" id="banner-config" hidden>
@@ -179,6 +191,27 @@
   <span class="dot"></span><span id="banner-pend-text"></span><span class="arrow">Ver →</span>
 </button>
 
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div class="eyebrow">Umuprev · Gestão de Reclamações</div>
+    <h1>Entrar no sistema</h1>
+    <p class="hint">Escolha seu nome e digite sua senha. Se ainda não tem uma senha, fale com a Fran.</p>
+    <form id="form-login">
+      <div class="field">
+        <label for="login-nome">Seu nome</label>
+        <select id="login-nome" required><option value="">Selecione…</option></select>
+      </div>
+      <div class="field">
+        <label for="login-senha">Senha</label>
+        <input type="password" id="login-senha" required>
+      </div>
+      <button type="submit" class="submit-btn" id="btn-login">Entrar</button>
+      <p class="login-error" id="login-error" hidden></p>
+    </form>
+  </div>
+</div>
+
+<div id="app-root" hidden>
 <div class="tabs" role="tablist">
   <button class="tab" id="tab-btn-registrar" role="tab" aria-selected="true">Registrar</button>
   <button class="tab" id="tab-btn-painel" role="tab" aria-selected="false">Painel da gerência</button>
@@ -241,7 +274,7 @@
             <label for="f-supervisor">Supervisor responsável</label>
             <select id="f-supervisor" required>
               <option value="">Selecione…</option>
-              <option>Deysi</option><option>Alanah</option><option>Maria Eduarda</option><option>Rodrigo</option><option>Thiago</option>
+              <option>Francielle</option><option>Deysi</option><option>Alanah</option><option>Maria Eduarda</option><option>Rodrigo</option><option>Thiago</option>
             </select>
           </div>
           <div class="field"><label for="f-prazo">Prazo (opcional)</label><input type="date" id="f-prazo"></div>
@@ -306,6 +339,7 @@
     </div>
   </section>
 </main>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -320,41 +354,50 @@
 
   var SETORES = ["Funerária","Atendimento","Cobrança","Clínica Médica","Clínica Odontológica","Parceiros"];
   var CATEGORIAS = ["Atendimento","Demora","Cobrança","Informação divergente","Prestador/parceiro","Estrutura","Procedimento","Outro"];
-  var SUPERVISORES = ["Deysi","Alanah","Maria Eduarda","Rodrigo","Thiago"];
+  var SUPERVISORES = ["Francielle","Deysi","Alanah","Maria Eduarda","Rodrigo","Thiago"];
   var STATUSES = ["Aberta","Em tratativa","Aguardando","Resolvida"];
   var GRAVIDADES = ["Baixa","Média","Alta","Crítica"];
   var RESULTADOS = ["","Resolvida","Parcial","Não resolvida"];
   var CONTATOS = ["","Sim","Não","Não se aplica"];
   var SEV_COLOR = { "Baixa":"var(--sev-baixa)", "Média":"var(--sev-media)", "Alta":"var(--sev-alta)", "Crítica":"var(--sev-critica)" };
   var PEND_DIAS = 3;
-  var CACHE_KEY = 'umuprev_reclamacoes_v4_cache';
-  var LAST_SUPERVISOR_KEY = 'umuprev_reclamacoes_v4_last_supervisor';
+  var CACHE_KEY = 'umuprev_reclamacoes_v5_cache';
+  var LAST_SUPERVISOR_KEY = 'umuprev_reclamacoes_v5_last_supervisor';
+  var SESSION_KEY = 'umuprev_reclamacoes_v5_session';
   var POLL_MS = 30000;
 
   function lsGet(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
   function lsSet(k,v){ try { localStorage.setItem(k, v); } catch(e){} }
   function cacheLoad(){ try { var raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) : []; } catch(e){ return []; } }
   function cacheSave(list){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch(e){} }
+  function sessionLoad(){ try { var raw = localStorage.getItem(SESSION_KEY); return raw ? JSON.parse(raw) : null; } catch(e){ return null; } }
+  function sessionSave(s){ try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch(e){} }
+  function sessionClear(){ try { localStorage.removeItem(SESSION_KEY); } catch(e){} }
 
   var complaints = cacheLoad();
   var lastSyncAt = null;
   var syncing = false;
   var syncError = false;
+  var session = sessionLoad(); // { token, nome, papel }
 
   // ---------- backend ----------
   function apiGet(){
     if (!API_URL) return Promise.reject(new Error('sem-config'));
-    return fetch(API_URL, { method: 'GET' }).then(function(r){
+    if (!session) return Promise.reject(new Error('sem-sessao'));
+    return fetch(API_URL + '?token=' + encodeURIComponent(session.token), { method: 'GET' }).then(function(r){
       if (!r.ok) throw new Error('http-' + r.status);
       return r.json();
     });
   }
   function apiPost(payload){
     if (!API_URL) return Promise.reject(new Error('sem-config'));
+    var body = {};
+    for (var k in payload){ body[k] = payload[k]; }
+    if (session && payload.action !== 'login') body.token = session.token;
     return fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS no Apps Script
-      body: JSON.stringify(payload)
+      body: JSON.stringify(body)
     }).then(function(r){
       if (!r.ok) throw new Error('http-' + r.status);
       return r.json();
@@ -369,8 +412,12 @@
     }
     document.getElementById('banner-config').hidden = true;
     syncing = true; syncError = false; renderSyncNote();
-    return apiGet().then(function(list){
-      complaints = Array.isArray(list) ? list : [];
+    return apiGet().then(function(resp){
+      if (!resp || resp.ok === false){
+        if (resp && resp.error === 'sessao-invalida'){ syncing = false; logout(true); return; }
+        throw new Error((resp && resp.error) || 'erro');
+      }
+      complaints = Array.isArray(resp.data) ? resp.data : [];
       cacheSave(complaints);
       lastSyncAt = new Date();
       syncing = false;
@@ -382,6 +429,71 @@
       if (showToastOnOk) toast('Não deu para atualizar agora — mostrando os últimos dados que este navegador tinha.', true);
     });
   }
+
+  // ---------- login / sessão ----------
+  var loginWrap = document.getElementById('login-wrap');
+  var appRoot = document.getElementById('app-root');
+  var userBar = document.getElementById('user-bar');
+  var userNameEl = document.getElementById('user-name');
+  var loginSelect = document.getElementById('login-nome');
+  var loginError = document.getElementById('login-error');
+  SUPERVISORES.forEach(function(s){ var o=document.createElement('option'); o.textContent=s; loginSelect.appendChild(o); });
+
+  function showApp(){
+    loginWrap.hidden = true;
+    appRoot.hidden = false;
+    userBar.hidden = false;
+    userNameEl.textContent = 'Olá, ' + session.nome + (session.papel === 'admin' ? ' (gerência)' : '');
+    tabPainel.textContent = session.papel === 'admin' ? 'Painel da gerência' : 'Minhas reclamações';
+    render();
+    syncFromServer(false);
+  }
+  function showLogin(msg){
+    loginWrap.hidden = false;
+    appRoot.hidden = true;
+    userBar.hidden = true;
+    loginError.hidden = !msg;
+    if (msg) loginError.textContent = msg;
+  }
+  function logout(expired){
+    sessionClear();
+    session = null;
+    complaints = [];
+    cacheSave(complaints);
+    selectTab('registrar');
+    showLogin(expired ? 'Sua sessão expirou — entre novamente.' : null);
+  }
+  document.getElementById('btn-logout').addEventListener('click', function(){ logout(false); });
+
+  document.getElementById('form-login').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var nome = loginSelect.value;
+    var senha = document.getElementById('login-senha').value;
+    if (!nome || !senha){ loginError.textContent = 'Selecione seu nome e digite a senha.'; loginError.hidden = false; return; }
+    var btn = document.getElementById('btn-login');
+    btn.disabled = true; btn.textContent = 'Entrando…';
+    apiPost({ action: 'login', nome: nome, senha: senha }).then(function(resp){
+      if (!resp || !resp.ok){
+        var msgs = {
+          'usuario-nao-encontrado': 'Usuário não encontrado.',
+          'senha-incorreta': 'Senha incorreta.',
+          'senha-nao-configurada': 'Sua senha ainda não foi configurada — fale com a Fran.'
+        };
+        loginError.textContent = (resp && msgs[resp.error]) || 'Não foi possível entrar. Tente novamente.';
+        loginError.hidden = false;
+        return;
+      }
+      session = { token: resp.token, nome: resp.nome, papel: resp.papel };
+      sessionSave(session);
+      document.getElementById('login-senha').value = '';
+      showApp();
+    }).catch(function(){
+      loginError.textContent = 'Não deu para conectar agora — verifique a internet.';
+      loginError.hidden = false;
+    }).finally(function(){
+      btn.disabled = false; btn.textContent = 'Entrar';
+    });
+  });
 
   // ---------- tabs ----------
   var tabRegistrar = document.getElementById('tab-btn-registrar');
@@ -448,6 +560,7 @@
     }
     var now = new Date().toISOString();
     var supervisor = fSupervisor.value;
+    var autor = session ? session.nome : supervisor;
     var record = {
       id: newId(),
       numero: '',
@@ -466,8 +579,9 @@
       resultado: '',
       reincidencia: 'Não',
       observacoes: '',
-      timeline: [{ ts: now, autor: supervisor, texto: 'Registrou a reclamação.' }],
-      createdAt: now, updatedAt: now, resolvedAt: '', atualizadoPor: supervisor
+      registradoPor: autor,
+      timeline: [{ ts: now, autor: autor, texto: 'Registrou a reclamação.' }],
+      createdAt: now, updatedAt: now, resolvedAt: '', atualizadoPor: autor
     };
     btnSubmit.disabled = true; btnSubmit.textContent = 'Enviando…';
     apiPost({ action: 'save', record: record }).then(function(resp){
@@ -671,7 +785,7 @@
         if (!entryText){ toast('Descreva o que foi feito ou altere o status.', true); return; }
         if (statusChanged && texto) entryText += ' (status: ' + newStatus + ')';
 
-        var autor = complaints[idx].supervisorResponsavel || 'Não informado';
+        var autor = session ? session.nome : (complaints[idx].supervisorResponsavel || 'Não informado');
         var now = new Date().toISOString();
         var updated = JSON.parse(JSON.stringify(complaints[idx]));
         updated.timeline = updated.timeline || [];
@@ -739,9 +853,8 @@
     renderSyncNote();
   }
 
-  render();
-  syncFromServer(false);
-  setInterval(function(){ if (!secPainel.hidden) syncFromServer(false); }, POLL_MS);
+  if (session){ showApp(); } else { showLogin(); }
+  setInterval(function(){ if (session && !secPainel.hidden) syncFromServer(false); }, POLL_MS);
 })();
 </script>
 </body>
